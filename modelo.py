@@ -36,11 +36,11 @@ def generar_datos_empleados(num_empleados=30):
 
 def to_excel(df):
     """
-    Convierte un DataFrame a un archivo Excel en formato de bytes.
+    Convierte un DataFrame a un archivo Excel en un objeto BytesIO.
     """
     output = BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False, sheet_name='Datos Filtrados')
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df.to_excel(writer, index=False, sheet_name='Datos')
     return output.getvalue()
 
 # --- Configuración Inicial ---
@@ -128,9 +128,12 @@ df_filtered = df[(df['Departamento'].isin(dept_filter)) & (df['Habilidades'].isi
 st.subheader("Datos Filtrados")
 st.write(df_filtered)
 
+# Inicializar comentarios
+if 'comentarios' not in st.session_state:
+    st.session_state.comentarios = {}
+
 # --- Panel de Aprobación de Recomendaciones ---
 st.header("Panel de Aprobación de Recomendaciones")
-comentarios = []
 for index, row in df_filtered.iterrows():
     st.subheader(f"{row['Nombre']} ({row['Departamento']})")
     st.write(f"Evaluación de Desempeño: {row['Evaluacion_Desempeno']}")
@@ -150,26 +153,37 @@ for index, row in df_filtered.iterrows():
     else:
         st.success(f"Recomendación aprobada para {row['Nombre']}.")
 
-    comentario = st.text_area(f"Comentarios de {row['Nombre']}", key=f"comentario_{row['ID']}_{index}")
-    comentarios.append({
-        'ID': row['ID'],
-        'Nombre': row['Nombre'],
-        'Comentario': comentario
-    })
+    # Guardar comentarios
+    comentario = st.text_input(f"Comentarios para {row['Nombre']}", key=f"comentarios_{row['ID']}_{index}")
+    if comentario:
+        st.session_state.comentarios[row['ID']] = comentario
+        st.success("Comentario guardado exitosamente.")
 
-if st.button("Guardar Comentarios"):
-    comentarios_df = pd.DataFrame(comentarios)
-    comentarios_df.to_excel('comentarios_empleados.xlsx', index=False)
-    st.success("Comentarios guardados exitosamente.")
+# --- Descargar Comentarios Guardados ---
+if st.button("Descargar Comentarios Guardados"):
+    if st.session_state.comentarios:
+        # Crear una columna de comentarios en el DataFrame filtrado
+        df_filtered['Comentarios'] = df_filtered['ID'].map(st.session_state.comentarios).fillna('')
+        comentarios_excel = to_excel(df_filtered)
+        st.download_button(
+            label="Descargar Comentarios",
+            data=comentarios_excel,
+            file_name="datos_filtrados.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+    else:
+        st.warning("No hay comentarios para descargar.")
 
 # --- Simulación de Impacto de Decisiones ---
 st.header("Simulación de Impacto de Decisiones")
 
+# Simulación de Impacto en Evaluación
 if st.checkbox("Simular Impacto en Evaluaciones de Desempeño"):
-    impacto_df = df_filtered.copy()
-    impacto_df['Evaluacion_Desempeno'] += np.random.uniform(-0.5, 0.5, len(impacto_df))
-    st.write("Simulación de Impacto:")
-    st.write(impacto_df)
+    # Ejemplo simple de simulación: incrementar la evaluación en 0.5 puntos por cambio de rol
+    df_simulado = df.copy()
+    df_simulado['Evaluacion_Desempeno'] += 0.5
+    st.write("Impacto Simulado en Evaluaciones de Desempeño:")
+    st.write(df_simulado[['ID', 'Nombre', 'Evaluacion_Desempeno']])
 
 # --- Modelo de Predicción de Retroalimentación ---
 st.header("Modelo de Predicción de Retroalimentación")
@@ -178,28 +192,30 @@ st.header("Modelo de Predicción de Retroalimentación")
 X = df[['Evaluacion_Desempeno', 'Trayectoria_Laboral']]
 y = df['Retroalimentacion'].apply(lambda x: 1 if x == 'Positiva' else 0)
 
-# Dividir datos en conjunto de entrenamiento y prueba
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
-
-# Entrenar modelo
-model = RandomForestClassifier(n_estimators=100, random_state=42)
-model.fit(X_train, y_train)
-
-# Predecir y evaluar
-y_pred = model.predict(X_test)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+modelo = RandomForestClassifier()
+modelo.fit(X_train, y_train)
+y_pred = modelo.predict(X_test)
 accuracy = accuracy_score(y_test, y_pred)
-st.metric(label="Precisión del Modelo de Predicción", value=f"{accuracy:.2%}")
 
-# --- Descargar Comentarios Guardados ---
-st.header("Descargar Comentarios Guardados")
+st.write(f"Precisión del Modelo: {accuracy:.2f}")
 
-if os.path.exists('comentarios_empleados.xlsx'):
-    with open('comentarios_empleados.xlsx', 'rb') as f:
-        st.download_button(
-            label="Descargar Comentarios Guardados",
-            data=f,
-            file_name='comentarios_empleados.xlsx',
-            mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        )
-else:
-    st.warning("No hay comentarios para descargar.")
+# --- Exportar Datos Filtrados ---
+st.header("Exportar Datos Filtrados")
+
+exportar = st.button("Exportar Datos Filtrados a Excel")
+
+if exportar:
+    if df_filtered.empty:
+        st.warning("No hay datos filtrados para exportar.")
+    else:
+        try:
+            filtered_excel = to_excel(df_filtered)
+            st.download_button(
+                label="Descargar Datos Filtrados",
+                data=filtered_excel,
+                file_name="datos_filtrados.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+        except Exception as e:
+            st.error(f"Error al exportar los datos: {e}")
