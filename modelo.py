@@ -4,7 +4,6 @@ Created on Thu Aug  8 09:00:18 2024
 
 @author: jperezr
 """
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -15,7 +14,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score
 
 # --- Funciones ---
-def generar_datos_empleados(num_empleados=200):
+def generar_datos_empleados(num_empleados=30):
     """
     Genera un archivo .xlsx con datos ficticios de empleados.
     """
@@ -175,39 +174,47 @@ for index, row in df_filtered.iterrows():
         'Comentario': comentario
     })
 
-feedback_df = pd.DataFrame(feedback_data)
-if not feedback_df.empty:
-    st.write("Comentarios Recibidos:")
-    st.write(feedback_df)
+if st.button("Guardar Comentarios"):
+    feedback_df = pd.DataFrame(feedback_data)
+    feedback_df.to_excel('comentarios_empleados.xlsx', index=False)
+    st.success("Comentarios guardados exitosamente.")
 
 # --- Simulación de Impacto de Decisiones ---
 st.header("Simulación de Impacto de Decisiones")
-st.write("Simula cómo las decisiones de cambio de rol pueden impactar la evaluación de desempeño de los empleados.")
-
-# Simulación usando un modelo de IA
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score
 
 # Preparar datos para el modelo
-X = df[['Evaluacion_Desempeno', 'Trayectoria_Laboral']].values
-y = df['Retroalimentacion'].apply(lambda x: 1 if x == 'Positiva' else (2 if x == 'Neutral' else 3)).values
-
+X = df[['Evaluacion_Desempeno', 'Trayectoria_Laboral']]
+y = df['Retroalimentacion'].apply(lambda x: 1 if x == 'Positiva' else (2 if x == 'Neutral' else 3))
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+
+# Entrenar el modelo
 model = RandomForestClassifier(n_estimators=100, random_state=42)
 model.fit(X_train, y_train)
-
-# Evaluación del modelo
 y_pred = model.predict(X_test)
+
+# Evaluar el modelo
 accuracy = accuracy_score(y_test, y_pred)
-st.write(f"Precisión del Modelo de IA: {accuracy:.2f}")
+st.write(f"Precisión del Modelo: {accuracy:.2f}")
 
-# Entradas del usuario para predicción
-st.sidebar.header("Entradas del Usuario")
-eval_input = st.slider("Evaluación de Desempeño", min_value=1, max_value=5, value=3)
-trayectoria_input = st.slider("Trayectoria Laboral", min_value=1, max_value=20, value=5)
+# Simulación
+simular_datos = pd.DataFrame({
+    'Evaluacion_Desempeno': [4, 5],
+    'Trayectoria_Laboral': [5, 10]
+})
+simulaciones = model.predict(simular_datos)
+st.write("Simulación de Impacto de Decisiones")
+st.write(pd.DataFrame({
+    'Evaluacion_Desempeno': simular_datos['Evaluacion_Desempeno'],
+    'Trayectoria_Laboral': simular_datos['Trayectoria_Laboral'],
+    'Predicción Retroalimentación': ['Positiva' if i == 1 else ('Neutral' if i == 2 else 'Negativa') for i in simulaciones]
+}))
 
-# Predicción
-prediccion = model.predict([[eval_input, trayectoria_input]])[0]
-retroalimentacion = {1: 'Positiva', 2: 'Neutral', 3: 'Negativa'}
-st.write(f"La retroalimentación predicha es: {retroalimentacion[prediccion]}")
+# --- Exportar Datos ---
+st.header("Exportar Datos")
+exportar = st.button("Exportar Datos Filtrados a Excel")
+if exportar:
+    if df_filtered.empty:
+        st.warning("No hay datos filtrados para exportar.")
+    else:
+        df_filtered.to_excel('datos_filtrados.xlsx', index=False)
+        st.success("Datos filtrados exportados exitosamente.")
