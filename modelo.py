@@ -4,6 +4,14 @@ Created on Thu Aug  8 09:00:18 2024
 
 @author: jperezr
 """
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Aug  8 09:00:18 2024
+
+@author: jperezr
+"""
+
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -12,6 +20,7 @@ import plotly.express as px
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score
+from io import BytesIO
 
 # --- Funciones ---
 def generar_datos_empleados(num_empleados=30):
@@ -31,6 +40,15 @@ def generar_datos_empleados(num_empleados=30):
     df = pd.DataFrame(data)
     df.to_excel('empleados.xlsx', index=False)
     return df
+
+def to_excel(df):
+    """
+    Convierte un DataFrame a un archivo Excel en un objeto BytesIO.
+    """
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df.to_excel(writer, index=False, sheet_name='Datos')
+    return output.getvalue()
 
 # --- Configuración Inicial ---
 st.title("Desarrollo Profesional Personalizado con IA en PENSIONISSSTE")
@@ -117,6 +135,10 @@ df_filtered = df[(df['Departamento'].isin(dept_filter)) & (df['Habilidades'].isi
 st.subheader("Datos Filtrados")
 st.write(df_filtered)
 
+# Inicializar comentarios
+if 'comentarios' not in st.session_state:
+    st.session_state.comentarios = {}
+
 # --- Panel de Aprobación de Recomendaciones ---
 st.header("Panel de Aprobación de Recomendaciones")
 for index, row in df_filtered.iterrows():
@@ -138,83 +160,69 @@ for index, row in df_filtered.iterrows():
     else:
         st.success(f"Recomendación aprobada para {row['Nombre']}.")
 
-# --- Asignación de Recursos Basada en Evaluaciones ---
-st.header("Asignación de Recursos")
-for index, row in df_filtered.iterrows():
-    st.subheader(f"{row['Nombre']} ({row['Departamento']})")
-    st.write(f"Evaluación de Desempeño: {row['Evaluacion_Desempeno']}")
-    st.write(f"Trayectoria Laboral: {row['Trayectoria_Laboral']} años")
-    st.write(f"Preferencias de Desarrollo: {row['Preferencias_Desarrollo']}")
+    # Guardar comentarios
+    comentario = st.text_input(f"Comentarios para {row['Nombre']}", key=f"comentarios_{row['ID']}_{index}")
+    if comentario:
+        st.session_state.comentarios[row['ID']] = comentario
+        st.success("Comentario guardado exitosamente.")
 
-    if row['Evaluacion_Desempeno'] >= 4:
-        asignar_recursos = st.checkbox(
-            f"Asignar recursos para {row['Nombre']} ({row['Departamento']})", 
-            key=f"asignar_recursos_{row['ID']}_{index}"
+# --- Descargar Comentarios Guardados ---
+if st.button("Descargar Comentarios Guardados"):
+    if st.session_state.comentarios:
+        # Crear una columna de comentarios en el DataFrame filtrado
+        df_filtered['Comentarios'] = df_filtered['ID'].map(st.session_state.comentarios).fillna('')
+        comentarios_excel = to_excel(df_filtered)
+        st.download_button(
+            label="Descargar Comentarios",
+            data=comentarios_excel,
+            file_name="datos_filtrados.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
-        
-        if asignar_recursos:
-            st.success(f"Recursos asignados a {row['Nombre']}.")
     else:
-        st.warning(f"Desempeño insuficiente para asignación de recursos adicionales.")
-
-# --- Retroalimentación y Comentarios Directos ---
-st.header("Retroalimentación Directa")
-feedback_data = []
-
-for index, row in df_filtered.iterrows():
-    st.subheader(f"{row['Nombre']} ({row['Departamento']})")
-    st.write(f"Evaluación de Desempeño: {row['Evaluacion_Desempeno']}")
-    st.write(f"Trayectoria Laboral: {row['Trayectoria_Laboral']} años")
-    st.write(f"Preferencias de Desarrollo: {row['Preferencias_Desarrollo']}")
-
-    comentario = st.text_area(f"Comentarios de {row['Nombre']}", key=f"comentario_{row['ID']}_{index}")
-    feedback_data.append({
-        'ID': row['ID'],
-        'Nombre': row['Nombre'],
-        'Comentario': comentario
-    })
-
-if st.button("Guardar Comentarios"):
-    feedback_df = pd.DataFrame(feedback_data)
-    feedback_df.to_excel('comentarios_empleados.xlsx', index=False)
-    st.success("Comentarios guardados exitosamente.")
+        st.warning("No hay comentarios para descargar.")
 
 # --- Simulación de Impacto de Decisiones ---
 st.header("Simulación de Impacto de Decisiones")
 
+# Simulación de Impacto en Evaluación
+if st.checkbox("Simular Impacto en Evaluaciones de Desempeño"):
+    # Ejemplo simple de simulación: incrementar la evaluación en 0.5 puntos por cambio de rol
+    df_simulado = df.copy()
+    df_simulado['Evaluacion_Desempeno'] += 0.5
+    st.write("Impacto Simulado en Evaluaciones de Desempeño:")
+    st.write(df_simulado[['ID', 'Nombre', 'Evaluacion_Desempeno']])
+
+# --- Modelo de Predicción de Retroalimentación ---
+st.header("Modelo de Predicción de Retroalimentación")
+
 # Preparar datos para el modelo
 X = df[['Evaluacion_Desempeno', 'Trayectoria_Laboral']]
-y = df['Retroalimentacion'].apply(lambda x: 1 if x == 'Positiva' else (2 if x == 'Neutral' else 3))
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+y = df['Retroalimentacion'].apply(lambda x: 1 if x == 'Positiva' else 0)
 
-# Entrenar el modelo
-model = RandomForestClassifier(n_estimators=100, random_state=42)
-model.fit(X_train, y_train)
-y_pred = model.predict(X_test)
-
-# Evaluar el modelo
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+modelo = RandomForestClassifier()
+modelo.fit(X_train, y_train)
+y_pred = modelo.predict(X_test)
 accuracy = accuracy_score(y_test, y_pred)
+
 st.write(f"Precisión del Modelo: {accuracy:.2f}")
 
-# Simulación
-simular_datos = pd.DataFrame({
-    'Evaluacion_Desempeno': [4, 5],
-    'Trayectoria_Laboral': [5, 10]
-})
-simulaciones = model.predict(simular_datos)
-st.write("Simulación de Impacto de Decisiones")
-st.write(pd.DataFrame({
-    'Evaluacion_Desempeno': simular_datos['Evaluacion_Desempeno'],
-    'Trayectoria_Laboral': simular_datos['Trayectoria_Laboral'],
-    'Predicción Retroalimentación': ['Positiva' if i == 1 else ('Neutral' if i == 2 else 'Negativa') for i in simulaciones]
-}))
+# --- Exportar Datos Filtrados ---
+st.header("Exportar Datos Filtrados")
 
-# --- Exportar Datos ---
-st.header("Exportar Datos")
 exportar = st.button("Exportar Datos Filtrados a Excel")
+
 if exportar:
     if df_filtered.empty:
         st.warning("No hay datos filtrados para exportar.")
     else:
-        df_filtered.to_excel('datos_filtrados.xlsx', index=False)
-        st.success("Datos filtrados exportados exitosamente.")
+        try:
+            filtered_excel = to_excel(df_filtered)
+            st.download_button(
+                label="Descargar Datos Filtrados",
+                data=filtered_excel,
+                file_name="datos_filtrados.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+        except Exception as e:
+            st.error(f"Error al exportar los datos: {e}")
